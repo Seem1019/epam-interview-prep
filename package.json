@@ -1,0 +1,11 @@
+{
+  "name": "epam-interview-prep",
+  "private": true,
+  "description": "Local app to prepare the EPAM L3 .NET full-stack interview (ASP.NET Core + React + Claude).",
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "demo": "node scripts/start.mjs --demo",
+    "test": "dotnet test EpamPrep.slnx",
+    "build": "dotnet build EpamPrep.slnx && npm --prefix web run build"
+  }
+}

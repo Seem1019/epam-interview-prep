@@ -1,0 +1,85 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "explanation", "key_concepts", "glossary", "senior_details_es", "code_examples", "common_mistakes_es", "interview_qa", "key_terms"],
+  "properties": {
+    "title": { "type": "string" },
+    "explanation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definition_es", "when_why_es", "trade_off_es", "example_es", "example_code", "example_lang"],
+      "properties": {
+        "definition_es": { "type": "string" },
+        "when_why_es": { "type": "string" },
+        "trade_off_es": { "type": "string" },
+        "example_es": { "type": "string" },
+        "example_code": { "type": "string" },
+        "example_lang": { "type": "string" }
+      }
+    },
+    "key_concepts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "plain_es", "use_when_es"],
+        "properties": {
+          "name": { "type": "string" },
+          "plain_es": { "type": "string" },
+          "use_when_es": { "type": "string" }
+        }
+      }
+    },
+    "glossary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term", "meaning_es"],
+        "properties": {
+          "term": { "type": "string" },
+          "meaning_es": { "type": "string" }
+        }
+      }
+    },
+    "senior_details_es": { "type": "array", "items": { "type": "string" } },
+    "code_examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "lang", "code", "explanation_es"],
+        "properties": {
+          "title": { "type": "string" },
+          "lang": { "type": "string" },
+          "code": { "type": "string" },
+          "explanation_es": { "type": "string" }
+        }
+      }
+    },
+    "common_mistakes_es": { "type": "array", "items": { "type": "string" } },
+    "interview_qa": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_en", "answer_en"],
+        "properties": { "question_en": { "type": "string" }, "answer_en": { "type": "string" } }
+      }
+    },
+    "key_terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term", "respelling", "ipa", "tip_es"],
+        "properties": {
+          "term": { "type": "string" },
+          "respelling": { "type": "string" },
+          "ipa": { "type": "string" },
+          "tip_es": { "type": "string" }
+        }
+      }
+    }
+  }
+}

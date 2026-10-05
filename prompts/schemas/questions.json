@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["questions"],
+  "properties": {
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "level", "subtopic", "prompt_en", "code", "code_lang", "options", "correct_option", "expected_output", "model_answer_en", "explanation_es"],
+        "properties": {
+          "type": { "type": "string", "enum": ["multiple_choice", "output", "open", "code_review"] },
+          "level": { "type": "string", "enum": ["Novice", "Intermediate", "Advanced", "Expert"] },
+          "subtopic": { "type": "string" },
+          "prompt_en": { "type": "string" },
+          "code": { "type": "string" },
+          "code_lang": { "type": "string", "enum": ["csharp", "javascript", "typescript", "sql", "none"] },
+          "options": { "type": "array", "items": { "type": "string" } },
+          "correct_option": { "type": "integer" },
+          "expected_output": { "type": "string" },
+          "model_answer_en": { "type": "string" },
+          "explanation_es": { "type": "string" }
+        }
+      }
+    }
+  }
+}

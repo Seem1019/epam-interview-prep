@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EpamPrep.Api/EpamPrep.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EpamPrep.Tests/EpamPrep.Tests.csproj" />
+  </Folder>
+</Solution>

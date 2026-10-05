@@ -1,0 +1,42 @@
+# Secrets: the Anthropic key must never be committed.
+# It lives in the ANTHROPIC_API_KEY env var or in dotnet user-secrets (stored outside the repo).
+.env
+.env.*
+*.env
+secrets.json
+appsettings.*.local.json
+appsettings.Local.json
+**/ANTHROPIC_API_KEY*
+
+# Local data
+*.db
+*.db-shm
+*.db-wal
+
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+.vs/
+
+# Node / Vite
+node_modules/
+web/dist/
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Certificates / private keys
+*.pem
+*.pfx
+*.key
+*.p12
+
+# Local tool settings
+.claude/settings.local.json

@@ -1,0 +1,721 @@
+[
+  {
+    "topic": "csharp", "level": "Intermediate", "type": "output", "subtopic": "Closures",
+    "prompt": "What does this print?",
+    "lang": "csharp",
+    "code": "var actions = new List<Action>();\nfor (var i = 0; i < 3; i++)\n    actions.Add(() => Console.Write(i));\n\nforeach (var a in actions) a();",
+    "options": ["012", "333", "222", "Compile error"], "correct": 1, "expected": "333",
+    "model": "It prints 333. A lambda captures the variable, not its value. In a for loop there is a single i shared by all iterations, so when the actions run after the loop, i is already 3. Since C# 5 the foreach loop variable is scoped per iteration, so the same code with foreach would print 012. The fix in a for loop is to copy the value into a local inside the body before capturing it.",
+    "explanation": "El compilador genera una clase de closure con un único campo i para todo el for. Las lambdas leen ese campo cuando se ejecutan, no cuando se crean. En foreach (desde C# 5) cada iteración tiene su propia variable."
+  },
+  {
+    "topic": "csharp", "level": "Intermediate", "type": "output", "subtopic": "Deferred execution",
+    "prompt": "What does this print?",
+    "lang": "csharp",
+    "code": "var list = new List<int> { 1, 2, 3 };\nvar query = list.Where(x => x > 1);\nlist.Add(4);\nConsole.WriteLine(query.Count());",
+    "options": ["2", "3", "4", "InvalidOperationException"], "correct": 1, "expected": "3",
+    "model": "It prints 3. LINQ to Objects operators like Where use deferred execution: the query is just a description until it is enumerated. Count enumerates it after 4 was added, so it sees 2, 3 and 4. This matters in production because enumerating the same IEnumerable twice runs the query twice; with EF Core that means two database round trips. Materialise with ToList when you need a snapshot.",
+    "explanation": "Where devuelve un iterador perezoso. La consulta se evalúa en Count(), cuando la lista ya contiene 1,2,3,4. No hay excepción porque no se modifica la colección durante la enumeración."
+  },
+  {
+    "topic": "csharp", "level": "Advanced", "type": "multiple_choice", "subtopic": "async/await",
+    "prompt": "What does ConfigureAwait(false) do when used in library code?",
+    "lang": "none", "code": "",
+    "options": [
+      "It forces the awaited operation to run on a thread-pool thread",
+      "It tells the awaiter not to resume on the captured SynchronizationContext/TaskScheduler",
+      "It disables the compiler-generated state machine for that await",
+      "It makes the await complete synchronously when possible"
+    ],
+    "correct": 1,
+    "model": "ConfigureAwait(false) tells the awaiter not to capture the current SynchronizationContext, so the continuation runs on whatever thread completes the task, usually a thread-pool thread. Libraries use it to avoid deadlocks when a UI or legacy ASP.NET caller blocks with .Result, and to save the cost of marshalling back. The trade-off is that after the await you cannot touch UI elements or context-bound state. In ASP.NET Core there is no SynchronizationContext, so it matters less in app code but is still good practice in libraries.",
+    "explanation": "No cambia dónde se ejecuta la operación asíncrona, solo dónde continúa el código después del await. ASP.NET Core no tiene SynchronizationContext, por eso el deadlock clásico de .Result aparece en WinForms/WPF o ASP.NET clásico."
+  },
+  {
+    "topic": "csharp", "level": "Advanced", "type": "output", "subtopic": "Struct copy semantics",
+    "prompt": "What does this print?",
+    "lang": "csharp",
+    "code": "var h = new Holder();\nh.C.Inc();\nh.P.Inc();\nConsole.WriteLine($\"{h.C.Value} {h.P.Value}\");\n\nstruct Counter { public int Value; public void Inc() => Value++; }\nclass Holder { public Counter C; public Counter P { get; set; } }",
+    "options": ["1 1", "1 0", "0 0", "Compile error"], "correct": 1, "expected": "1 0",
+    "model": "It prints 1 0. Counter is a value type. h.C is a field, so Inc mutates the struct stored inside the object. h.P is a property: the getter returns a copy, Inc increments the copy, and the copy is discarded. That's why mutable structs are considered a design smell; prefer readonly structs or records, and the compiler then warns you about defensive copies.",
+    "explanation": "Acceder a una propiedad de tipo struct devuelve una copia. Llamar un método sobre esa copia compila, pero el cambio se pierde. Asignar h.P.Value = 1 sí daría error de compilación (CS1612)."
+  },
+  {
+    "topic": "csharp", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Variance",
+    "prompt": "Which assignment compiles?",
+    "lang": "none", "code": "",
+    "options": [
+      "List<object> a = new List<string>();",
+      "IEnumerable<object> b = new List<string>();",
+      "IList<object> c = new List<string>();",
+      "Func<string> f = () => \"x\"; Func<object> g = f; Func<string> h = g;"
+    ],
+    "correct": 1,
+    "model": "Only IEnumerable<object> b = new List<string>() compiles, because IEnumerable<out T> is covariant: it only returns T, so treating strings as objects is type-safe. List<T> and IList<T> are invariant classes or interfaces with T in both input and output positions; allowing it would let you add an int into a list of strings. Variance works only on interfaces and delegates, and only for reference types.",
+    "explanation": "La covarianza (out) permite usar un tipo más derivado donde se espera uno base, solo si T aparece en posiciones de salida. Func<string> → Func<object> es válido, pero volver de Func<object> a Func<string> no."
+  },
+  {
+    "topic": "csharp", "level": "Advanced", "type": "open", "subtopic": "async/await internals",
+    "prompt": "What does the compiler generate for an async method, which thread runs the code after an await in ASP.NET Core, and why is async void dangerous?",
+    "lang": "none", "code": "",
+    "model": "The compiler rewrites an async method into a state machine struct whose MoveNext runs each segment between awaits. If the awaited task is not complete, the state machine registers a continuation and returns; when the task finishes, MoveNext resumes. In ASP.NET Core there's no SynchronizationContext, so the continuation runs on a thread-pool thread, not necessarily the original one. async void can't be awaited, so callers can't know when it ends, and an exception is raised on the context and crashes the process. Use it only for event handlers.",
+    "explanation": "Puntos clave: state machine (IAsyncStateMachine), continuations, sin SynchronizationContext en ASP.NET Core, y async void solo para event handlers porque sus excepciones no se pueden capturar con try/catch del llamador."
+  },
+  {
+    "topic": "csharp", "level": "Advanced", "type": "code_review", "subtopic": "Code review",
+    "prompt": "What would you change in a code review?",
+    "lang": "csharp",
+    "code": "public class OrderService\n{\n    private static List<Order> _cache = new();\n    private readonly string _connString;\n\n    public OrderService(IConfiguration config)\n        => _connString = config[\"Db\"];\n\n    public async void SaveOrder(Order order)\n    {\n        lock (_cache)\n        {\n            _cache.Add(order);\n        }\n\n        var conn = new SqlConnection(_connString);\n        conn.Open();\n        var cmd = new SqlCommand(\n            \"INSERT INTO Orders VALUES ('\" + order.Id + \"', \" + order.Total + \")\", conn);\n        await cmd.ExecuteNonQueryAsync();\n        Thread.Sleep(100);\n    }\n}",
+    "model": "The biggest issues are: SQL injection from string concatenation, so use parameters or Dapper/EF; async void, which callers can't await and whose exceptions crash the process, so return Task; the connection and command are never disposed, so use await using; conn.Open is synchronous, use OpenAsync and pass a CancellationToken; Thread.Sleep blocks a thread-pool thread, use Task.Delay or remove it; and the static unbounded list is a memory leak shared across requests. I'd also inject a typed options object instead of reading raw configuration.",
+    "explanation": "Un buen code review prioriza: seguridad (inyección SQL), corrección (async void, recursos sin dispose), rendimiento (bloqueo de hilos, Open síncrono) y diseño (estado estático, configuración). Mencionar primero lo grave y proponer el fix concreto."
+  },
+  {
+    "topic": "dotnet", "level": "Novice", "type": "multiple_choice", "subtopic": ".NET Standard",
+    "prompt": "What is .NET Standard?",
+    "lang": "none", "code": "",
+    "options": [
+      "A runtime that replaces .NET Framework on Windows",
+      "A formal specification of APIs that libraries can target to run on multiple .NET implementations",
+      "The ECMA standard for the C# language",
+      "A set of coding guidelines published by Microsoft"
+    ],
+    "correct": 1,
+    "model": ".NET Standard is a formal specification of APIs that every .NET implementation agrees to provide. A library targeting netstandard2.0 runs on .NET Framework 4.6.1+, .NET Core 2.0+ and Xamarin. It was the way to share code during the transition. Since .NET 5 a single unified platform exists, so for new code you target net8.0 or later directly, and keep netstandard2.0 only when you must support .NET Framework consumers.",
+    "explanation": ".NET Standard no es un runtime: es un contrato de APIs. Hoy se usa sobre todo netstandard2.0 para librerías que deben funcionar también en .NET Framework."
+  },
+  {
+    "topic": "dotnet", "level": "Intermediate", "type": "multiple_choice", "subtopic": "DI lifetimes",
+    "prompt": "A singleton service receives a scoped DbContext in its constructor. What happens when the app runs in the Development environment?",
+    "lang": "none", "code": "",
+    "options": [
+      "It works and every request shares the same DbContext",
+      "An InvalidOperationException: scope validation detects a scoped service consumed from a singleton",
+      "ASP.NET Core creates a new DbContext per request automatically",
+      "It fails to compile"
+    ],
+    "correct": 1,
+    "model": "In Development, ASP.NET Core enables ValidateScopes, so resolving the singleton throws an InvalidOperationException: cannot consume scoped service from singleton. Without validation you'd get a captive dependency: one DbContext living forever, shared across concurrent requests, which is not thread-safe and grows its change tracker. The fix is to inject IServiceScopeFactory or IDbContextFactory and create a scope per operation, or make the consumer scoped.",
+    "explanation": "Es la 'captive dependency': un servicio de vida corta capturado por uno de vida larga. ValidateScopes está activo por defecto en Development."
+  },
+  {
+    "topic": "dotnet", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Configuration providers",
+    "prompt": "The same key is defined in appsettings.json, as an environment variable and as a command-line argument. With the default WebApplication builder, which value wins?",
+    "lang": "none", "code": "",
+    "options": ["appsettings.json", "The environment variable", "The command-line argument", "Startup fails because of duplicated keys"],
+    "correct": 2,
+    "model": "The command-line argument wins. Configuration providers are layered and the last one added overrides earlier ones: appsettings.json, then appsettings.{Environment}.json, then user secrets in Development, then environment variables, then command-line args. That ordering is why secrets go in user secrets locally and in environment variables or Key Vault in the cloud, never in appsettings.json.",
+    "explanation": "El orden por defecto: appsettings.json → appsettings.{Env}.json → user-secrets (solo Development) → variables de entorno → línea de comandos. El último proveedor gana."
+  },
+  {
+    "topic": "dotnet", "level": "Advanced", "type": "open", "subtopic": "Options pattern",
+    "prompt": "Explain the difference between IOptions<T>, IOptionsSnapshot<T> and IOptionsMonitor<T>. When would you use each?",
+    "lang": "none", "code": "",
+    "model": "All three bind configuration to a typed class. IOptions<T> is a singleton computed once, so it never sees changes; use it for static settings. IOptionsSnapshot<T> is scoped and recomputed per request, so it picks up reloaded config, but it can't be injected into singletons. IOptionsMonitor<T> is a singleton with CurrentValue and an OnChange callback, so it works in singletons and background services. I also add ValidateDataAnnotations and ValidateOnStart so bad config fails at startup, not at the first request.",
+    "explanation": "Diferencia clave: ciclo de vida y recarga. Un detalle senior: validar opciones al arrancar (ValidateOnStart) y usar named options cuando hay varias configuraciones del mismo tipo."
+  },
+  {
+    "topic": "aspnet", "level": "Intermediate", "type": "output", "subtopic": "Middleware pipeline",
+    "prompt": "A request hits this pipeline. What is written to the console?",
+    "lang": "csharp",
+    "code": "app.Use(async (ctx, next) => { Console.Write(\"A\"); await next(); Console.Write(\"a\"); });\napp.Use(async (ctx, next) => { Console.Write(\"B\"); await next(); Console.Write(\"b\"); });\napp.Run(async ctx => Console.Write(\"C\"));",
+    "options": ["ABCba", "ABCab", "CBAab", "ABC"], "correct": 0, "expected": "ABCba",
+    "model": "It prints ABCba. Middleware forms a pipeline of nested delegates: each one runs its code before next on the way in, then the rest after next on the way back, like a Russian doll. app.Run is terminal, so it doesn't call next. That's why order matters: exception handling goes first so it wraps everything, and authentication must come before authorization.",
+    "explanation": "La parte antes de await next() se ejecuta en orden de registro; la parte después, en orden inverso. Run termina el pipeline."
+  },
+  {
+    "topic": "aspnet", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Auth middleware order",
+    "prompt": "What happens if app.UseAuthorization() is registered before app.UseAuthentication()?",
+    "lang": "none", "code": "",
+    "options": [
+      "Nothing: the order of these two calls doesn't matter",
+      "Authorization evaluates an unauthenticated user, so [Authorize] endpoints return 401 even with a valid token",
+      "The application throws at startup",
+      "The token is validated twice, hurting performance"
+    ],
+    "correct": 1,
+    "model": "Authorization would run before the authentication middleware has populated HttpContext.User, so the user looks anonymous and protected endpoints return 401 even with a valid JWT. Authentication answers who you are, authorization answers what you can do, so authentication must run first, after UseRouting so endpoint metadata is available. It's a classic bug when people reorder Program.cs.",
+    "explanation": "UseAuthentication construye el ClaimsPrincipal; UseAuthorization lo evalúa contra las policies del endpoint. Invertirlos produce 401 sin errores visibles."
+  },
+  {
+    "topic": "aspnet", "level": "Advanced", "type": "multiple_choice", "subtopic": "Filters vs middleware",
+    "prompt": "You need to log the bound action arguments of every MVC action. Which mechanism has direct access to them?",
+    "lang": "none", "code": "",
+    "options": ["A custom middleware", "An action filter (IAsyncActionFilter)", "An IStartupFilter", "A Kestrel connection middleware"],
+    "correct": 1,
+    "model": "An action filter. Filters run inside the MVC or endpoint invocation pipeline after routing and model binding, so ActionExecutingContext exposes ActionArguments and ModelState. Middleware runs earlier and only sees the raw HttpContext. The trade-off: middleware is framework-agnostic and covers every request, including static files, while filters are MVC-specific but understand actions, results and model binding. For Minimal APIs the equivalent is an endpoint filter.",
+    "explanation": "Middleware: pipeline HTTP genérico. Filtros: pipeline de MVC (authorization, resource, action, exception, result). En Minimal APIs se usan endpoint filters (IEndpointFilter)."
+  },
+  {
+    "topic": "aspnet", "level": "Advanced", "type": "open", "subtopic": "Idempotency",
+    "prompt": "How would you make POST /payments idempotent so that client retries never charge twice?",
+    "lang": "none", "code": "",
+    "model": "I'd require an Idempotency-Key header generated by the client per logical operation. The server stores the key with a hash of the request and the resulting response in a table with a unique constraint, inside the same transaction as the payment. A retry with the same key returns the stored response; same key with a different body returns 422. Concurrent duplicates are blocked by the unique index or a short lock. Keys expire after, say, 24 hours. Stripe does exactly this.",
+    "explanation": "POST no es idempotente por definición; se hace idempotente con una clave de idempotencia persistida atómicamente con la operación. Detalles senior: constraint única, hash del body, respuesta cacheada, concurrencia y expiración."
+  },
+  {
+    "topic": "aspnet", "level": "Intermediate", "type": "multiple_choice", "subtopic": "JWT",
+    "prompt": "What does the signature of a JWT guarantee?",
+    "lang": "none", "code": "",
+    "options": [
+      "That the payload is encrypted and cannot be read by the client",
+      "That the token was issued by someone holding the key and the header/payload were not modified",
+      "That the token has not been revoked",
+      "That the user is still logged in"
+    ],
+    "correct": 1,
+    "model": "The signature guarantees integrity and authenticity: the token was issued by someone holding the signing key and nobody changed the header or payload. It doesn't provide confidentiality, since the payload is just Base64Url-encoded, so never put secrets in it. It also can't be revoked before expiry, which is why we use short-lived access tokens with refresh tokens, and validate issuer, audience, lifetime and signing key on the server.",
+    "explanation": "JWT firmado (JWS) ≠ cifrado (JWE). La revocación requiere tokens cortos + refresh tokens o una lista de denegación."
+  },
+  {
+    "topic": "ef", "level": "Intermediate", "type": "output", "subtopic": "Loading related data",
+    "prompt": "Lazy loading is disabled and Blog.Posts is initialised to an empty list. Blogs have posts in the database. What does this print for each blog?",
+    "lang": "csharp",
+    "code": "var blogs = await db.Blogs.ToListAsync();\nforeach (var b in blogs)\n    Console.WriteLine(b.Posts.Count);",
+    "options": ["The real number of posts", "0", "NullReferenceException", "It triggers one query per blog (N+1)"], "correct": 1, "expected": "0",
+    "model": "It prints 0 for every blog. Without lazy loading and without Include, EF Core only loads the Blogs table, so the navigation stays as the empty list from the constructor. With lazy-loading proxies enabled it would instead fire one query per blog, the classic N+1 problem. The right fix depends on the use case: Include for small graphs, or better, a Select projection to a DTO with Posts.Count so the database does the counting.",
+    "explanation": "EF Core no carga relaciones automáticamente. Las opciones son eager loading (Include), explicit loading, lazy loading (proxies, cuidado con N+1) o proyección con Select."
+  },
+  {
+    "topic": "ef", "level": "Advanced", "type": "open", "subtopic": "Cartesian explosion",
+    "prompt": "A query that Includes two collection navigations became very slow as data grew. What is happening and how would you fix it?",
+    "lang": "none", "code": "",
+    "model": "That's cartesian explosion. A single SQL query with JOINs to two collections returns rows equal to the product of both collection sizes per parent, so data transfer and materialisation grow multiplicatively. Fixes: AsSplitQuery to load each collection in a separate query, at the cost of more round trips and no single consistent snapshot; or better, project only the fields you need with Select; and add AsNoTracking for read-only paths. I'd confirm it with logging of the generated SQL or the execution plan first.",
+    "explanation": "Detalles senior: medir antes (ToQueryString, logs), split query vs single query (consistencia y round trips), proyecciones y AsNoTracking."
+  },
+  {
+    "topic": "ef", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Migrations",
+    "prompt": "What is the recommended way to apply EF Core migrations to a production database with several app instances?",
+    "lang": "none", "code": "",
+    "options": [
+      "Call Database.Migrate() at application startup",
+      "Generate an idempotent SQL script or a migration bundle, review it and run it from the deployment pipeline",
+      "Use EnsureCreated() so the schema always matches",
+      "Delete and recreate the database on each deployment"
+    ],
+    "correct": 1,
+    "model": "Generate an idempotent SQL script with dotnet ef migrations script --idempotent, or a migration bundle, review it, and run it as a deployment step before the new version takes traffic. Calling Migrate at startup is risky with multiple instances racing, it needs elevated DB permissions in the app, and failures happen at runtime. I also keep migrations backward compatible, expand then contract, so old and new versions can run side by side during rollout.",
+    "explanation": "Migrate() en startup sirve para desarrollo o apps de una sola instancia. En producción: script idempotente o bundle en el pipeline, con cambios compatibles hacia atrás."
+  },
+  {
+    "topic": "ef", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Dapper",
+    "prompt": "What is the main reason to use Dapper instead of EF Core for a specific query?",
+    "lang": "none", "code": "",
+    "options": [
+      "Dapper generates better SQL automatically",
+      "Full control over hand-written SQL with minimal mapping overhead and no change tracking",
+      "Dapper supports migrations and EF Core does not",
+      "Dapper caches query results in memory by default"
+    ],
+    "correct": 1,
+    "model": "Dapper is a micro ORM: you write the SQL and it maps rows to objects very fast, with no change tracking, LINQ translation or migrations. I use it for hot read paths, complex reporting queries with CTEs or window functions, or stored procedures, while EF Core stays for the write side and the domain model. The trade-off is that you own the SQL: no compile-time safety on columns and more code to maintain.",
+    "explanation": "Combinación habitual: EF Core para comandos/escrituras y Dapper para lecturas críticas o reporting (estilo CQRS)."
+  },
+  {
+    "topic": "ef", "level": "Advanced", "type": "multiple_choice", "subtopic": "Change tracking",
+    "prompt": "When is AsNoTracking() the right choice?",
+    "lang": "none", "code": "",
+    "options": [
+      "When you will modify the entities and call SaveChanges",
+      "For read-only queries whose results are not updated in the same DbContext",
+      "Only when the entity has no primary key",
+      "To enable lazy loading"
+    ],
+    "correct": 1,
+    "model": "AsNoTracking skips creating change-tracking snapshots, so read-only queries use less memory and CPU. It's the default choice for queries that return data to an API without updating it. The trade-off: entities aren't tracked, so SaveChanges won't see changes, and identity resolution is off, so the same row can appear as different instances, unless you use AsNoTrackingWithIdentityResolution. You can set it globally with QueryTrackingBehavior.",
+    "explanation": "Sin tracking no hay snapshot ni identity map. Para lecturas puras es más rápido; para actualizar necesitas tracking o Attach/Update explícito."
+  },
+  {
+    "topic": "sql", "level": "Novice", "type": "multiple_choice", "subtopic": "WHERE vs HAVING",
+    "prompt": "What is the difference between WHERE and HAVING?",
+    "lang": "none", "code": "",
+    "options": [
+      "There is no difference",
+      "WHERE filters rows before grouping; HAVING filters groups after aggregation",
+      "HAVING is faster than WHERE",
+      "WHERE can only be used with JOINs"
+    ],
+    "correct": 1,
+    "model": "WHERE filters individual rows before GROUP BY, so it can't use aggregates. HAVING filters the groups after aggregation, so you can write HAVING COUNT(*) > 5. Performance-wise, put every condition that doesn't need an aggregate in WHERE, so fewer rows are grouped and indexes can be used.",
+    "explanation": "Orden lógico: FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY."
+  },
+  {
+    "topic": "sql", "level": "Intermediate", "type": "output", "subtopic": "Window functions",
+    "prompt": "Department A has Ann (100), Bob (100) and Cid (90). What is r for Cid?",
+    "lang": "sql",
+    "code": "SELECT Name, Dept, Salary,\n       RANK() OVER (PARTITION BY Dept ORDER BY Salary DESC) AS r\nFROM Employees;",
+    "options": ["1", "2", "3", "NULL"], "correct": 2, "expected": "3",
+    "model": "Cid gets 3. RANK gives ties the same rank and then skips, so Ann and Bob are 1 and the next rank is 3. DENSE_RANK would give 2 because it doesn't leave gaps, and ROW_NUMBER would give unique numbers 1, 2, 3 with an arbitrary order between the ties. Window functions compute over a partition without collapsing rows, which is why they're great for top-N per group.",
+    "explanation": "RANK: 1,1,3. DENSE_RANK: 1,1,2. ROW_NUMBER: 1,2,3 (no determinista en empates)."
+  },
+  {
+    "topic": "sql", "level": "Advanced", "type": "multiple_choice", "subtopic": "Isolation levels",
+    "prompt": "In SQL Server, which isolation level prevents non-repeatable reads but still allows phantom reads?",
+    "lang": "none", "code": "",
+    "options": ["READ UNCOMMITTED", "READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"],
+    "correct": 2,
+    "model": "REPEATABLE READ. It keeps shared locks on the rows you've read until the transaction ends, so nobody can change them, but new rows matching your filter can still be inserted, producing phantoms. SERIALIZABLE adds key-range locks to prevent phantoms at the cost of more blocking and deadlocks. In practice I prefer READ COMMITTED SNAPSHOT for OLTP: readers don't block writers, thanks to row versioning in tempdb.",
+    "explanation": "Dirty read → READ UNCOMMITTED lo permite; non-repeatable read → evitado desde REPEATABLE READ; phantom → solo SERIALIZABLE (o SNAPSHOT) lo evita."
+  },
+  {
+    "topic": "sql", "level": "Advanced", "type": "open", "subtopic": "Performance troubleshooting",
+    "prompt": "A query that used to take 200 ms now takes 20 seconds in production. Walk me through how you troubleshoot it.",
+    "lang": "none", "code": "",
+    "model": "First I confirm the scope: is it this query only, or the whole server? I check blocking and waits. Then I compare the current execution plan with the old one in Query Store: a plan regression from parameter sniffing or stale statistics is the most common cause. I look for scans instead of seeks, key lookups, bad cardinality estimates and implicit conversions. Quick mitigation: force the last good plan in Query Store or update statistics; the real fix is usually an index, a rewritten predicate, or OPTION RECOMPILE for skewed parameters.",
+    "explanation": "Respuesta senior: medir antes de tocar, Query Store, planes, parameter sniffing, estadísticas, bloqueos; mitigación rápida y luego causa raíz."
+  },
+  {
+    "topic": "sql", "level": "Intermediate", "type": "multiple_choice", "subtopic": "CAP theorem",
+    "prompt": "According to the CAP theorem, what does a CP system do during a network partition?",
+    "lang": "none", "code": "",
+    "options": [
+      "Keeps answering every request with possibly stale data",
+      "Rejects or delays some requests to preserve consistency",
+      "Loses durability of committed writes",
+      "Automatically merges conflicting writes"
+    ],
+    "correct": 1,
+    "model": "A CP system chooses consistency over availability during a partition: nodes that can't reach the majority stop accepting writes or reads, so clients get errors or timeouts instead of stale data. An AP system keeps answering and reconciles later, giving eventual consistency. Since partitions are unavoidable in distributed systems, the real choice is what happens during one, and PACELC adds the latency versus consistency trade-off when there is no partition.",
+    "explanation": "Ejemplos típicos: MongoDB con majority write concern se comporta CP; Cassandra/DynamoDB tienden a AP con consistencia configurable."
+  },
+  {
+    "topic": "sql", "level": "Intermediate", "type": "multiple_choice", "subtopic": "MongoDB aggregation",
+    "prompt": "In a MongoDB aggregation pipeline, which stage joins documents from another collection?",
+    "lang": "none", "code": "",
+    "options": ["$group", "$lookup", "$unwind", "$merge"],
+    "correct": 1,
+    "model": "$lookup performs a left outer join with another collection in the same database. It's often followed by $unwind to flatten the joined array. But in MongoDB, if you need $lookup on every read, it's a sign the data model is relational; the usual design is to embed data that is read together and reference data that grows unbounded or is shared.",
+    "explanation": "$group agrega, $unwind aplana arrays, $merge escribe resultados en otra colección. Modelar embebiendo vs referenciando es la pregunta de diseño clave."
+  },
+  {
+    "topic": "testing", "level": "Novice", "type": "multiple_choice", "subtopic": "AAA",
+    "prompt": "What does AAA stand for in unit testing?",
+    "lang": "none", "code": "",
+    "options": ["Assert, Act, Arrange", "Arrange, Act, Assert", "Analyze, Automate, Assert", "Arrange, Assert, Audit"],
+    "correct": 1,
+    "model": "Arrange, Act, Assert. Arrange sets up the system under test and its dependencies, Act executes exactly one behaviour, and Assert verifies the outcome. Keeping a single Act per test makes failures easy to diagnose, and a clear structure makes tests readable as documentation.",
+    "explanation": "Un test = un comportamiento. Si hay varios Act, probablemente son varios tests."
+  },
+  {
+    "topic": "testing", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Test doubles",
+    "prompt": "What is the difference between a stub and a mock?",
+    "lang": "none", "code": "",
+    "options": [
+      "They are synonyms",
+      "A stub returns canned data to drive the test; a mock is used to verify that interactions happened",
+      "A mock is hand-written; a stub is generated by a library",
+      "Stubs are only used in integration tests"
+    ],
+    "correct": 1,
+    "model": "A stub provides canned answers so the code under test can run, and you assert on the result or state. A mock records interactions and you assert that a call happened, for example that an email sender was called once. Over-using mocks couples tests to implementation details and makes refactoring painful, so I prefer state-based tests with stubs or fakes and keep mocks for real outgoing side effects.",
+    "explanation": "Clasificación de Meszaros: dummy, stub, spy, mock, fake. Moq/NSubstitute crean ambos; la diferencia está en qué verificas."
+  },
+  {
+    "topic": "testing", "level": "Intermediate", "type": "multiple_choice", "subtopic": "FIRST",
+    "prompt": "In the FIRST principles of unit tests, what does the S stand for?",
+    "lang": "none", "code": "",
+    "options": ["Simple", "Self-validating", "Stateless", "Scalable"],
+    "correct": 1,
+    "model": "Self-validating: the test decides pass or fail by itself through assertions, without someone reading logs. FIRST is Fast, Isolated, Repeatable, Self-validating and Timely. In practice the R is what breaks most often: tests depending on DateTime.Now, random data or shared databases, which is why we inject TimeProvider and isolate state.",
+    "explanation": "Fast, Isolated/Independent, Repeatable, Self-validating, Timely."
+  },
+  {
+    "topic": "testing", "level": "Advanced", "type": "open", "subtopic": "Integration testing",
+    "prompt": "How do you write integration tests for an ASP.NET Core API that uses EF Core and SQL Server?",
+    "lang": "none", "code": "",
+    "model": "I use WebApplicationFactory to host the real app in memory and call it with HttpClient, so routing, middleware, model binding and serialisation are all exercised. For the database I prefer Testcontainers with a real SQL Server image rather than the in-memory provider, which doesn't behave like SQL. I apply migrations once per test run and reset data between tests with Respawn or transactions. External HTTP dependencies are replaced in ConfigureTestServices with fakes. These tests are slower, so they cover key flows while unit tests cover logic.",
+    "explanation": "Puntos senior: WebApplicationFactory, base real (Testcontainers) vs InMemory, aislamiento de datos (Respawn), reemplazo de dependencias externas y su lugar en la pirámide."
+  },
+  {
+    "topic": "testing", "level": "Intermediate", "type": "open", "subtopic": "TDD",
+    "prompt": "Describe the TDD cycle and one situation where you would not use TDD.",
+    "lang": "none", "code": "",
+    "model": "TDD is red, green, refactor: write a failing test for the next small behaviour, write the minimum code to pass it, then refactor with the test as a safety net. It drives a testable design and gives fast feedback. I don't use strict TDD for spikes or UI prototypes where requirements change by the hour, because the tests get thrown away; there I add tests after the design stabilises.",
+    "explanation": "Mencionar el ciclo, el beneficio en diseño y un caso realista donde no aporta (spikes, exploración)."
+  },
+  {
+    "topic": "patterns", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Decorator",
+    "prompt": "You need to add logging, caching and retries around IOrderRepository without modifying it. Which pattern fits best?",
+    "lang": "none", "code": "",
+    "options": ["Singleton", "Decorator", "Abstract Factory", "Template Method"],
+    "correct": 1,
+    "model": "Decorator. Each concern is a class that implements IOrderRepository and wraps another instance, so you can stack caching over retry over the real repository and change the order without touching existing code, following Open/Closed. In .NET I register it with Scrutor's Decorate or manually in DI. The trade-off is more classes and the stack order matters, for example cache before retry.",
+    "explanation": "Decorator = misma interfaz + composición. Ejemplos en .NET: Stream/BufferedStream, DelegatingHandler en HttpClient."
+  },
+  {
+    "topic": "patterns", "level": "Advanced", "type": "open", "subtopic": "Singleton",
+    "prompt": "How do you implement a thread-safe Singleton in C#, and why do we usually prefer a DI singleton lifetime instead?",
+    "lang": "none", "code": "",
+    "model": "The simplest thread-safe version is a private constructor and a static readonly Lazy<T> instance, which guarantees one lazy initialisation across threads. But the classic Singleton is global state: it hides dependencies, is hard to mock and couples callers to the concrete class. Registering the class as AddSingleton gives the same one-instance lifetime while keeping constructor injection and testability. Either way the instance must be thread-safe because it's shared across requests.",
+    "explanation": "Lazy<T> (o static readonly) resuelve la inicialización; el problema de diseño es el estado global. DI singleton mantiene la única instancia sin acoplar."
+  },
+  {
+    "topic": "patterns", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Factory",
+    "prompt": "What problem does the Factory Method pattern solve?",
+    "lang": "none", "code": "",
+    "options": [
+      "Guarantees a single instance of a class",
+      "Decouples client code from the concrete classes it needs to create",
+      "Adds behaviour to objects at runtime",
+      "Notifies dependents when state changes"
+    ],
+    "correct": 1,
+    "model": "Factory Method decouples the code that uses an object from the decision of which concrete class to create. The client depends on an abstraction and asks a factory, so you can add a new implementation without changing callers. In .NET a common form is a factory that picks a payment provider by country, or IHttpClientFactory. The trade-off is an extra indirection, so I only add it when creation logic varies.",
+    "explanation": "Factory Method delega la creación; Abstract Factory crea familias de objetos relacionados."
+  },
+  {
+    "topic": "patterns", "level": "Advanced", "type": "multiple_choice", "subtopic": "Strategy",
+    "prompt": "A method has a large switch on 'shippingType' that grows every sprint. Which refactoring best applies the Open/Closed principle?",
+    "lang": "none", "code": "",
+    "options": [
+      "Move the switch into a static helper class",
+      "Replace the switch with Strategy implementations resolved by key (e.g. from DI)",
+      "Convert the enum to strings",
+      "Use inheritance from the class that contains the switch"
+    ],
+    "correct": 1,
+    "model": "Replace the switch with the Strategy pattern: one IShippingCalculator per shipping type, registered in DI and resolved by key, for example with keyed services in .NET 8+. Adding a new type means adding a class, not editing a growing switch, so it's closed for modification. The trade-off is more types; for two or three stable cases a switch expression is perfectly fine.",
+    "explanation": "Strategy + keyed services (AddKeyedScoped) es una forma moderna en .NET. Saber cuándo NO aplicarlo es un detalle senior."
+  },
+  {
+    "topic": "design", "level": "Intermediate", "type": "multiple_choice", "subtopic": "SOLID",
+    "prompt": "Square inherits from Rectangle and overrides the Width setter to also change Height. Code that sets Width=2, Height=5 and expects Area=10 breaks. Which principle is violated?",
+    "lang": "none", "code": "",
+    "options": ["Single Responsibility", "Open/Closed", "Liskov Substitution", "Interface Segregation"],
+    "correct": 2,
+    "model": "Liskov Substitution: a subtype must be usable wherever its base type is expected without breaking the base type's contract. Square strengthens the invariants of Rectangle, so clients relying on independent width and height break. The fix is not to model that relationship with inheritance: use a common IShape abstraction or immutable types. Is-a in the real world doesn't always mean is-a in code.",
+    "explanation": "LSP trata de contratos de comportamiento, no solo de tipos. Señal típica: overrides que lanzan NotSupportedException o cambian invariantes."
+  },
+  {
+    "topic": "design", "level": "Advanced", "type": "code_review", "subtopic": "Code smells",
+    "prompt": "Which code smells and design problems do you see, and how would you refactor?",
+    "lang": "csharp",
+    "code": "public class ReportManager\n{\n    public string Generate(int type, List<Sale> sales, bool sendEmail, bool saveToDisk)\n    {\n        string result = \"\";\n        if (type == 1)\n            foreach (var s in sales) result += s.Amount + \";\";\n        else if (type == 2)\n            foreach (var s in sales) result += \"<td>\" + s.Amount + \"</td>\";\n\n        if (sendEmail)\n        {\n            var smtp = new SmtpClient(\"smtp.company.com\");\n            smtp.Send(\"reports@company.com\", \"boss@company.com\", \"Report\", result);\n        }\n        if (saveToDisk)\n            File.WriteAllText(\"C:\\\\reports\\\\r.txt\", result);\n        return result;\n    }\n}",
+    "model": "This method violates Single Responsibility: it formats, emails and writes files. The boolean flag arguments and the magic numbers for type are smells; I'd replace type with an IReportFormatter strategy, CSV and HTML, and move delivery into separate IReportSender implementations. new SmtpClient and File.WriteAllText hard-code infrastructure, break Dependency Inversion and make it untestable, and SmtpClient isn't disposed. String concatenation in a loop should be a StringBuilder or string.Join, and hard-coded hosts and paths belong in options.",
+    "explanation": "Smells: método largo, flag arguments, magic numbers, switch sobre tipo (Strategy), dependencias concretas (DIP), configuración hard-coded, recurso sin dispose, concatenación en bucle."
+  },
+  {
+    "topic": "design", "level": "Advanced", "type": "open", "subtopic": "Microservices",
+    "prompt": "When would you NOT split a monolith into microservices?",
+    "lang": "none", "code": "",
+    "model": "I wouldn't when the team is small, the domain boundaries are still unclear, or the main problem isn't independent scaling or deployment. Microservices trade code complexity for operational complexity: network failures, distributed transactions, eventual consistency, observability and DevOps maturity. A modular monolith with clear bounded contexts gives most of the benefits, and you can extract a service later when a module really needs its own scaling, release cadence or team.",
+    "explanation": "Respuesta senior: microservicios resuelven problemas organizacionales y de escalado, no de calidad de código. Modular monolith como alternativa."
+  },
+  {
+    "topic": "design", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Cohesion & coupling",
+    "prompt": "Which change increases cohesion?",
+    "lang": "none", "code": "",
+    "options": [
+      "Moving unrelated utility methods into a shared Helpers class",
+      "Grouping the methods that operate on the same data and change for the same reason into one class",
+      "Adding more parameters to a method so it handles more cases",
+      "Making all classes depend on a common base class"
+    ],
+    "correct": 1,
+    "model": "High cohesion means the elements of a module belong together: they work on the same data and change for the same reason. Grouping them reduces the ripple effect of changes. Low coupling means modules depend on each other through small, stable abstractions. Both together make code easier to change; a Helpers class is the opposite, low cohesion and high coupling.",
+    "explanation": "Cohesión alta + acoplamiento bajo. Clases 'Utils/Helpers' son una señal clásica de baja cohesión."
+  },
+  {
+    "topic": "cloud", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Secrets",
+    "prompt": "What is the recommended way for an ASP.NET Core app on Azure App Service to access a database password?",
+    "lang": "none", "code": "",
+    "options": [
+      "Store it in appsettings.Production.json",
+      "Store it in Azure Key Vault and access it with a Managed Identity",
+      "Hard-code it in the CI pipeline YAML",
+      "Store it in a cookie"
+    ],
+    "correct": 1,
+    "model": "Key Vault with a Managed Identity. The app's identity gets RBAC access to the vault, so there are no credentials in code or config; the Key Vault configuration provider loads secrets at startup. Even better, for Azure SQL use the Managed Identity directly with Entra ID authentication, so there's no password at all. Secrets in appsettings end up in source control, and pipeline YAML is visible to anyone with repo access.",
+    "explanation": "Mejor aún: autenticación sin contraseña (Entra ID + Managed Identity) contra Azure SQL."
+  },
+  {
+    "topic": "cloud", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Docker",
+    "prompt": "Why use a multi-stage Dockerfile for a .NET API?",
+    "lang": "none", "code": "",
+    "options": [
+      "To run several containers from one image",
+      "To build with the SDK image and ship only the published output on the smaller runtime image",
+      "To enable hot reload in production",
+      "Because Docker requires it for .NET"
+    ],
+    "correct": 1,
+    "model": "A multi-stage build compiles and publishes with the large SDK image, then copies only the published output into the much smaller aspnet runtime image. The final image is smaller, starts faster and has a smaller attack surface because there's no compiler or source code. I also copy the csproj and restore first, so the restore layer is cached between builds, and run as a non-root user.",
+    "explanation": "Detalles senior: cache de capas (restore antes de copiar el código), imagen chiseled/non-root, .dockerignore."
+  },
+  {
+    "topic": "cloud", "level": "Advanced", "type": "open", "subtopic": "CI/CD",
+    "prompt": "Design a CI/CD pipeline for a .NET API deployed to Azure. What stages and quality gates would you include?",
+    "lang": "none", "code": "",
+    "model": "CI on every pull request: restore, build, unit tests, integration tests with Testcontainers, coverage, static analysis and dependency vulnerability scanning; the PR can't merge if a gate fails. On main, build once, produce a versioned artifact or container image, then promote the same artifact through dev, staging and production. Infrastructure is deployed with Bicep or Terraform in the same pipeline. Database migrations run as a reviewed idempotent script. Production uses deployment slots or blue-green with smoke tests and automatic rollback, plus approvals.",
+    "explanation": "Claves: build once / deploy many, gates en PR, IaC, migraciones controladas, slots o blue-green, smoke tests y rollback."
+  },
+  {
+    "topic": "cloud", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Terraform",
+    "prompt": "What is the Terraform state file used for?",
+    "lang": "none", "code": "",
+    "options": [
+      "Storing application logs",
+      "Mapping the resources in configuration to real infrastructure so Terraform can compute the plan",
+      "Holding the source code of modules",
+      "Caching Docker images"
+    ],
+    "correct": 1,
+    "model": "The state maps resources in your configuration to real infrastructure IDs, so terraform plan can compute the diff between desired and actual. In teams it must live in a remote backend, like an Azure Storage account, with locking to avoid concurrent applies, and it must be protected because it can contain secrets. Bicep, by contrast, has no state file; Azure Resource Manager is the source of truth.",
+    "explanation": "Remote backend + locking + protección (puede contener secretos). Bicep no usa state."
+  },
+  {
+    "topic": "javascript", "level": "Intermediate", "type": "output", "subtopic": "Event loop",
+    "prompt": "What is the output order?",
+    "lang": "javascript",
+    "code": "console.log('A');\nsetTimeout(() => console.log('B'), 0);\nPromise.resolve().then(() => console.log('C'));\nconsole.log('D');",
+    "options": ["A B C D", "A D C B", "A D B C", "A C D B"], "correct": 1, "expected": "A D C B",
+    "model": "A, D, C, B. Synchronous code runs first, so A and D. Then the event loop drains the microtask queue, where promise callbacks live, so C. Only then it takes the next macrotask, the setTimeout callback, so B, even with a zero delay. That's why a long chain of microtasks can starve rendering and timers.",
+    "explanation": "Call stack → microtasks (promises, queueMicrotask) → macrotasks (setTimeout, eventos). setTimeout(0) no es inmediato."
+  },
+  {
+    "topic": "javascript", "level": "Novice", "type": "output", "subtopic": "var vs let",
+    "prompt": "What does this print?",
+    "lang": "javascript",
+    "code": "for (var i = 0; i < 3; i++) {\n  setTimeout(() => console.log(i));\n}",
+    "options": ["0 1 2", "3 3 3", "undefined x3", "2 2 2"], "correct": 1, "expected": "3 3 3",
+    "model": "It prints 3 three times. var is function-scoped, so all three callbacks close over the same i, which is 3 when the timers fire. With let, each iteration gets a new block-scoped binding and it prints 0, 1, 2. That's the main reason modern code uses let and const only.",
+    "explanation": "Mismo concepto que el closure en el for de C#: una sola variable compartida vs una por iteración."
+  },
+  {
+    "topic": "javascript", "level": "Intermediate", "type": "output", "subtopic": "this binding",
+    "prompt": "This code runs as an ES module (strict mode). What does it print?",
+    "lang": "javascript",
+    "code": "const obj = {\n  name: 'obj',\n  getName() { return this?.name; },\n};\nconst fn = obj.getName;\nconsole.log(obj.getName(), fn());",
+    "options": ["obj obj", "obj undefined", "undefined undefined", "TypeError"], "correct": 1, "expected": "obj undefined",
+    "model": "It prints obj and undefined. this is decided by how a function is called, not where it's defined. obj.getName() is a method call, so this is obj. fn() is a plain call, and in strict mode this is undefined, so the optional chaining returns undefined. Without the ?. it would throw a TypeError. Fixes are bind, an arrow function wrapper, or avoiding this altogether.",
+    "explanation": "Reglas de this: llamada como método, llamada simple (undefined en strict), new, call/apply/bind, y arrow functions que heredan el this léxico."
+  },
+  {
+    "topic": "javascript", "level": "Intermediate", "type": "output", "subtopic": "Equality",
+    "prompt": "What does this print?",
+    "lang": "javascript",
+    "code": "console.log([] == false, null == undefined, null === undefined, NaN === NaN);",
+    "options": ["true true false false", "false true false true", "true false false false", "false false false false"], "correct": 0, "expected": "true true false false",
+    "model": "true, true, false, false. With ==, the empty array is converted to an empty string and then to 0, and false is 0, so it's true. null and undefined are loosely equal only to each other. Strict equality compares type and value, so null === undefined is false. NaN is never equal to anything, including itself; use Number.isNaN. That's why teams enforce === with a linter.",
+    "explanation": "== aplica coerción de tipos; === no. NaN !== NaN; usar Number.isNaN u Object.is."
+  },
+  {
+    "topic": "javascript", "level": "Advanced", "type": "open", "subtopic": "Closures",
+    "prompt": "What is a closure? Give a practical use and one risk.",
+    "lang": "none", "code": "",
+    "model": "A closure is a function together with the variables from the scope where it was created, which it keeps access to after that scope has returned. A practical use is encapsulation: a factory that returns functions sharing private state, like a counter or a memoized cache, or React hooks capturing props. The risk is memory: closures keep their captured variables alive, so a long-lived event listener can retain large objects, and in React stale closures read old state if effect dependencies are wrong.",
+    "explanation": "Riesgos: fugas de memoria por listeners y stale closures en hooks."
+  },
+  {
+    "topic": "javascript", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Modules",
+    "prompt": "Which statement about ES modules is true?",
+    "lang": "none", "code": "",
+    "options": [
+      "Imports are copies of the exported values",
+      "Imports are live read-only bindings, and modules run in strict mode",
+      "A module is executed every time it is imported",
+      "ES modules cannot be loaded in browsers"
+    ],
+    "correct": 1,
+    "model": "ES module imports are live, read-only bindings to the exported variables, not copies; modules are always in strict mode and are evaluated once, then cached. Static import and export also enable tree shaking in bundlers like Vite or webpack. Dynamic import() returns a promise and is the basis for code splitting and lazy-loaded routes.",
+    "explanation": "ESM vs CommonJS: bindings vivos, estáticos (tree shaking), strict mode, import() para code splitting."
+  },
+  {
+    "topic": "react", "level": "Intermediate", "type": "output", "subtopic": "State updates",
+    "prompt": "The button is clicked once. What does it show?",
+    "lang": "typescript",
+    "code": "function Counter() {\n  const [count, setCount] = useState(0);\n  const handle = () => {\n    setCount(count + 1);\n    setCount(count + 1);\n    setCount(count + 1);\n  };\n  return <button onClick={handle}>{count}</button>;\n}",
+    "options": ["1", "3", "0", "2"], "correct": 0, "expected": "1",
+    "model": "It shows 1. count is a constant captured by the render, so all three calls compute 0 + 1, and React batches them into one re-render. To increment three times, use the functional updater, setCount(c => c + 1), which receives the latest queued state. State is a snapshot per render, not a mutable variable.",
+    "explanation": "Cada render ve un snapshot del estado. El updater funcional encadena actualizaciones. React 18+ hace batching automático."
+  },
+  {
+    "topic": "react", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Keys",
+    "prompt": "Why is using the array index as key problematic in a list where items can be inserted or reordered?",
+    "lang": "none", "code": "",
+    "options": [
+      "It causes a compile error in TypeScript",
+      "React may reuse the wrong component instance, mixing up state and DOM (e.g. input values)",
+      "Keys must be strings",
+      "It disables memoisation globally"
+    ],
+    "correct": 1,
+    "model": "Keys tell React's reconciliation which element is which between renders. With the index as key, inserting at the top shifts every key, so React reuses component instances for the wrong items: local state, input values and focus end up on the wrong row, plus unnecessary re-renders. Use a stable, unique ID from the data. Index keys are fine only for static lists that never reorder.",
+    "explanation": "La key identifica la instancia del componente. Debe ser estable y única entre hermanos."
+  },
+  {
+    "topic": "react", "level": "Intermediate", "type": "multiple_choice", "subtopic": "useEffect",
+    "prompt": "A useEffect reads the 'filter' prop but its dependency array is []. What happens when the parent changes 'filter'?",
+    "lang": "none", "code": "",
+    "options": [
+      "The effect re-runs automatically",
+      "The effect keeps using the initial filter value (stale closure)",
+      "React throws an error",
+      "The component unmounts"
+    ],
+    "correct": 1,
+    "model": "The effect ran only on mount and closed over the initial filter, so it keeps using that stale value. Every reactive value used inside an effect must be in the dependency array; the eslint react-hooks plugin enforces it. If the effect fetches data, also handle cleanup with an AbortController to avoid race conditions, or better, use a data library like TanStack Query.",
+    "explanation": "Dependencias completas + cleanup. Muchas veces el effect no es necesario (derivar en render o usar React Query)."
+  },
+  {
+    "topic": "react", "level": "Novice", "type": "multiple_choice", "subtopic": "Forms",
+    "prompt": "What is a controlled input in React?",
+    "lang": "none", "code": "",
+    "options": [
+      "An input whose value lives in React state and changes through onChange",
+      "An input validated by the browser only",
+      "An input read with a ref after submit",
+      "An input that cannot be edited"
+    ],
+    "correct": 0,
+    "model": "A controlled input gets its value from React state and updates it through onChange, so React is the single source of truth, which makes validation and conditional UI easy. An uncontrolled input keeps its value in the DOM and you read it with a ref or FormData. For large forms, libraries like React Hook Form use uncontrolled inputs to avoid re-rendering on every keystroke.",
+    "explanation": "Controlled = estado en React. Uncontrolled = estado en el DOM. React Hook Form + Zod es la combinación habitual."
+  },
+  {
+    "topic": "react", "level": "Advanced", "type": "open", "subtopic": "State management",
+    "prompt": "When would you use React Query (TanStack Query), Redux Toolkit or Context for state?",
+    "lang": "none", "code": "",
+    "model": "I separate server state from client state. Server state, data fetched from APIs, goes in TanStack Query: caching, deduplication, refetching and invalidation for free. Global client state that changes often and has complex transitions, like a multi-step editor, fits Redux Toolkit or Zustand, with devtools and predictable updates. Context is for low-frequency values like theme, auth user or locale; using it for fast-changing state re-renders every consumer.",
+    "explanation": "La distinción server state vs client state es lo que buscan oír. Context no es un state manager; es inyección de dependencias."
+  },
+  {
+    "topic": "react", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Memoisation",
+    "prompt": "What is the difference between useMemo and useCallback?",
+    "lang": "none", "code": "",
+    "options": [
+      "None, they are aliases",
+      "useMemo caches a computed value; useCallback caches a function reference",
+      "useCallback runs after render; useMemo before",
+      "useMemo is only for async code"
+    ],
+    "correct": 1,
+    "model": "useMemo caches the result of a calculation between renders; useCallback caches the function itself, which is the same as useMemo returning a function. They matter when a stable reference is needed, for example a callback passed to a React.memo child or used in an effect dependency. Using them everywhere adds complexity for no gain; the React Compiler now does much of this automatically.",
+    "explanation": "Optimización, no semántica. Útiles con React.memo o dependencias de effects."
+  },
+  {
+    "topic": "genai", "level": "Novice", "type": "multiple_choice", "subtopic": "LLM basics",
+    "prompt": "What is the context window of an LLM?",
+    "lang": "none", "code": "",
+    "options": [
+      "The number of users that can call it at once",
+      "The maximum number of tokens (input plus output) the model can consider in one request",
+      "The time a conversation is stored on the server",
+      "The training data cut-off date"
+    ],
+    "correct": 1,
+    "model": "The context window is the maximum number of tokens the model can attend to in one request, including the prompt, conversation history, documents and its own output. Everything the model knows about your task must fit there, so for large codebases tools retrieve only relevant files. Bigger windows cost more and can dilute attention, so good context selection still matters.",
+    "explanation": "Tokens ≠ palabras. Cuanto más contexto, más costo y latencia; por eso existen RAG, prompt caching y compaction."
+  },
+  {
+    "topic": "genai", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Prompt injection",
+    "prompt": "What is prompt injection?",
+    "lang": "none", "code": "",
+    "options": [
+      "Adding more examples to a prompt to improve accuracy",
+      "Untrusted content (a web page, email, file) containing instructions that the model follows as if they came from the user or developer",
+      "Compressing a prompt to save tokens",
+      "Fine-tuning a model with injected data"
+    ],
+    "correct": 1,
+    "model": "Prompt injection is when untrusted content processed by the model, like a web page, an email or a code comment, contains instructions that the model follows as if they were legitimate. It's the main security risk of agents with tools. Mitigations: treat model output as untrusted, least-privilege tools, human approval for side effects, separate trusted instructions from data, and never let the model hold secrets it could leak.",
+    "explanation": "Es el equivalente a SQL injection en LLMs. Mitigación por diseño: permisos mínimos y aprobación humana."
+  },
+  {
+    "topic": "genai", "level": "Intermediate", "type": "multiple_choice", "subtopic": "RAG",
+    "prompt": "When is Retrieval-Augmented Generation (RAG) preferable to fine-tuning?",
+    "lang": "none", "code": "",
+    "options": [
+      "When the model must learn a new output style",
+      "When answers must use up-to-date or private knowledge that changes often, with sources",
+      "When you want lower latency than any other approach",
+      "Never; fine-tuning is always better"
+    ],
+    "correct": 1,
+    "model": "RAG retrieves relevant documents at query time, usually with embeddings and a vector index, and puts them in the prompt. It's preferable when knowledge is private, changes often or needs citations, because you just update the index. Fine-tuning changes behaviour or style, not reliable facts. The trade-offs of RAG are retrieval quality, chunking and extra latency.",
+    "explanation": "RAG para conocimiento; fine-tuning para comportamiento/formato. Muchas veces basta con buen prompt + RAG."
+  },
+  {
+    "topic": "genai", "level": "Intermediate", "type": "open", "subtopic": "AI-assisted development",
+    "prompt": "How do you use AI coding assistants (Copilot, Claude Code, Cursor) in your daily work, and what do you never delegate blindly?",
+    "lang": "none", "code": "",
+    "model": "I use them for boilerplate, tests, refactors, explaining unfamiliar code and drafting documentation, always with clear context: the relevant files, conventions and acceptance criteria. I review every change like a pull request from a junior colleague and run the tests. I never blindly accept security-sensitive code, auth, crypto or SQL, database migrations, or architectural decisions, and I never paste secrets or customer data into tools that aren't approved by the company.",
+    "explanation": "Lo que buscan: uso concreto, revisión humana, límites de seguridad y confidencialidad, y medición del impacto."
+  },
+  {
+    "topic": "genai", "level": "Advanced", "type": "open", "subtopic": "GenAI in CI/CD",
+    "prompt": "Design an AI-assisted code review step in a CI pipeline. What are the risks and how do you mitigate them?",
+    "lang": "none", "code": "",
+    "model": "On each pull request, a pipeline job sends the diff plus relevant context, like coding guidelines and touched files, to an LLM with a review prompt, and posts comments on the PR. It's advisory, not a blocking gate, and humans still approve. Risks: false positives that create noise, leaking code to an external provider, prompt injection from the diff itself, and cost. Mitigations: an enterprise endpoint with no data retention, limiting the context, structured output with severity, no write permissions for the bot, and tracking acceptance rate to tune it.",
+    "explanation": "Puntos senior: asesor vs bloqueante, privacidad del código, prompt injection desde el diff, coste y métricas de utilidad."
+  },
+  {
+    "topic": "process", "level": "Novice", "type": "multiple_choice", "subtopic": "DoD / DoR",
+    "prompt": "What is the difference between Definition of Ready and Definition of Done?",
+    "lang": "none", "code": "",
+    "options": [
+      "They are the same checklist",
+      "DoR: criteria for a story to enter a sprint; DoD: criteria for an increment to be considered complete",
+      "DoR is for testers; DoD is for developers",
+      "DoD is written by the customer only"
+    ],
+    "correct": 1,
+    "model": "The Definition of Ready is the team's checklist for a backlog item to be pulled into a sprint: clear acceptance criteria, estimated, dependencies identified. The Definition of Done applies to every increment: code reviewed, tests passing, documentation updated, deployed to staging. DoD is part of Scrum and protects quality; DoR is a team practice that, if too strict, becomes a waterfall-style gate.",
+    "explanation": "DoD es oficial en Scrum; DoR es una práctica opcional. Un DoD típico incluye code review, tests, CI verde y criterios de aceptación."
+  },
+  {
+    "topic": "process", "level": "Intermediate", "type": "multiple_choice", "subtopic": "Scrum vs Kanban",
+    "prompt": "Which statement best describes Kanban compared to Scrum?",
+    "lang": "none", "code": "",
+    "options": [
+      "Kanban uses fixed-length sprints and a Scrum Master",
+      "Kanban focuses on continuous flow with explicit WIP limits and no prescribed roles or sprints",
+      "Kanban forbids changing priorities",
+      "Kanban requires story points"
+    ],
+    "correct": 1,
+    "model": "Kanban is a flow-based method: visualise the work, limit work in progress and optimise lead time, with no fixed sprints or prescribed roles. Scrum works in time-boxed sprints with defined roles, events and a sprint goal. Kanban fits support or ops teams with unpredictable incoming work; Scrum fits product development where planning in increments helps. Many teams mix both.",
+    "explanation": "Kanban: WIP limits, flujo, métricas de lead/cycle time. Scrum: sprints, roles, eventos."
+  },
+  {
+    "topic": "process", "level": "Intermediate", "type": "open", "subtopic": "Non-functional requirements",
+    "prompt": "Give examples of non-functional requirements for a payments API and how you would verify them.",
+    "lang": "none", "code": "",
+    "model": "Non-functional requirements describe how well the system works rather than what it does. For a payments API: availability of 99.95 percent, verified with SLO monitoring; p95 latency under 300 milliseconds at 200 requests per second, verified with load tests in the pipeline; security, PCI DSS, encrypted data and no card numbers in logs, verified with audits and scanning; idempotency and auditability of every operation. They must be measurable, otherwise nobody can verify them.",
+    "explanation": "NFR medibles: disponibilidad, latencia, throughput, seguridad, escalabilidad, observabilidad. Cada uno con su forma de verificación."
+  },
+  {
+    "topic": "leadership", "level": "Advanced", "type": "open", "subtopic": "Incident management",
+    "prompt": "After a deployment, 20% of API requests return 500 errors. Walk me through your first 30 minutes.",
+    "lang": "none", "code": "",
+    "model": "First, stabilise: since it started with the deployment, I'd roll back or swap the slot immediately rather than debug in production, and announce the incident in the agreed channel with an owner. Then confirm impact with dashboards and logs: which endpoints, which instances, error messages, correlation IDs. If rollback fixes it, we investigate calmly in staging. Afterwards, a blameless post-mortem with root cause and actions, like a missing test, a canary release or an alert that should have caught it earlier.",
+    "explanation": "Lo que buscan: mitigar primero (rollback), comunicar, diagnosticar con observabilidad, post-mortem sin culpables y acciones preventivas."
+  },
+  {
+    "topic": "leadership", "level": "Advanced", "type": "open", "subtopic": "Code reviews",
+    "prompt": "A junior developer's pull request works but has significant design problems. How do you handle the review?",
+    "lang": "none", "code": "",
+    "model": "I separate blocking issues from suggestions and label them, so they know what must change. For the design problems, I explain the why with a concrete consequence, like how this will break when we add a second provider, and suggest a direction rather than rewriting it for them. If it's big, I'd rather talk for fifteen minutes or pair than leave thirty comments. Then I check whether the root cause was unclear requirements or missing guidelines, and fix that so it doesn't repeat.",
+    "explanation": "Tono, priorización (blocking vs nit), explicar el porqué, conversación síncrona si es grande, y atacar la causa raíz (guías, mentoring)."
+  },
+  {
+    "topic": "leadership", "level": "Intermediate", "type": "open", "subtopic": "Estimation",
+    "prompt": "How do you estimate a feature with high uncertainty?",
+    "lang": "none", "code": "",
+    "model": "I break it down until the unknowns are visible, and time-box a spike for the riskiest part before committing. I estimate in ranges, for example three to six days, with explicit assumptions, rather than a single number, and use relative sizing with the team to avoid anchoring. I communicate the confidence level to stakeholders and re-estimate as soon as the spike answers the open questions.",
+    "explanation": "Rangos + supuestos explícitos, spikes time-boxed, estimación en equipo, reestimar y comunicar la incertidumbre."
+  },
+  {
+    "topic": "leadership", "level": "Advanced", "type": "open", "subtopic": "Technical debt",
+    "prompt": "How do you convince the business to allocate time to technical debt?",
+    "lang": "none", "code": "",
+    "model": "I translate debt into business impact with data: lead time for features in that module, incident count, onboarding time, or hours lost per sprint. I make the debt visible in the backlog with an estimate and a clear outcome, and prioritise the items that block upcoming roadmap work. Instead of a big rewrite, I propose incremental work, like a fixed percentage of each sprint or refactoring alongside related features, with measurable before and after.",
+    "explanation": "Hablar en lenguaje de negocio (riesgo, velocidad, costo), hacer la deuda visible y proponer pagos incrementales medibles."
+  },
+  {
+    "topic": "leadership", "level": "Advanced", "type": "open", "subtopic": "Architecture decisions",
+    "prompt": "Tell me about a technical decision you had to defend against pushback. Answer with STAR.",
+    "lang": "none", "code": "",
+    "model": "A strong STAR answer: Situation, one or two sentences of context; Task, what you were responsible for deciding; Action, the options you compared, the criteria such as cost, risk and team skills, how you gathered data, for example a spike or benchmark, and how you documented it in an ADR and handled disagreement; Result, a measurable outcome and what you learned. Keep it under two minutes, and say 'I', not only 'we'.",
+    "explanation": "Esta pregunta depende de tu experiencia real: completa tu perfil para practicarla en el simulador. Estructura STAR con resultado medible y aprendizaje."
+  }
+]

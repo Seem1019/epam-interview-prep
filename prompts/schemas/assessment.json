@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["level_demonstrated", "score", "justification_es", "decision", "next_focus", "feedback_es", "concision", "model_answer_en", "misrecognized_terms"],
+  "properties": {
+    "level_demonstrated": { "type": "string", "enum": ["None", "Novice", "Intermediate", "Advanced", "Expert"] },
+    "score": { "type": "integer", "description": "0-10" },
+    "justification_es": { "type": "string" },
+    "decision": { "type": "string", "enum": ["go_deeper", "clarify", "next_topic"] },
+    "next_focus": { "type": "string" },
+    "feedback_es": { "type": "string" },
+    "concision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "comment_es", "short_version_en"],
+      "properties": {
+        "verdict": { "type": "string", "enum": ["concise", "acceptable", "too_long", "too_short"] },
+        "comment_es": { "type": "string" },
+        "short_version_en": { "type": "string" }
+      }
+    },
+    "model_answer_en": { "type": "string" },
+    "misrecognized_terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["heard", "intended"],
+        "properties": { "heard": { "type": "string" }, "intended": { "type": "string" } }
+      }
+    }
+  }
+}
